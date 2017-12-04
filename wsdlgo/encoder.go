@@ -23,7 +23,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/fiorix/wsdl2go/wsdl"
+	"github.com/liftitapp/wsdl2go/wsdl"
 )
 
 // An Encoder generates Go code from WSDL definitions.
@@ -402,7 +402,7 @@ func (ge *goEncoder) cacheSOAPOperations(d *wsdl.Definitions) {
 var interfaceTypeT = template.Must(template.New("interfaceType").Parse(`
 // New{{.Name}} creates an initializes a {{.Name}}.
 func New{{.Name}}(cli *soap.Client) {{.Name}} {
-	return &{{.Impl}}{cli}
+    return &{{.Impl}}{cli}
 }
 
 // {{.Name}} was auto-generated from WSDL
@@ -469,7 +469,7 @@ func (ge *goEncoder) writeInterfaceFuncs(w io.Writer, d *wsdl.Definitions) error
 var portTypeT = template.Must(template.New("portType").Parse(`
 // {{.Name}} implements the {{.Interface}} interface.
 type {{.Name}} struct {
-	cli *soap.Client
+    cli *soap.Client
 }
 
 `))
@@ -541,31 +541,31 @@ func (ge *goEncoder) writeGoFuncs(w io.Writer, d *wsdl.Definitions) error {
 
 var soapFuncT = template.Must(template.New("soapFunc").Parse(
 	`func (p *{{.PortType}}) {{.Name}}({{.Input}}) ({{.Output}}) {
-	γ := struct {
-		XMLName xml.Name ` + "`xml:\"Envelope\"`" + `
-		Body    struct {
-			M {{.OutputType}} ` + "`xml:\"{{.XMLOutputType}}\"`" + `
-		}
-	}{}
-	if err = p.cli.RoundTripWithAction("{{.Name}}", α, &γ); err != nil {
-		return {{.RetDef}}, err
-	}
-	return {{if .RetPtr}}&{{end}}γ.Body.M, nil
+    γ := struct {
+        XMLName xml.Name ` + "`xml:\"Envelope\"`" + `
+        Body    struct {
+            M {{.OutputType}} ` + "`xml:\"{{.XMLOutputType}}\"`" + `
+        }
+    }{}
+    if err = p.cli.RoundTripWithAction("{{.Name}}", α, &γ); err != nil {
+        return {{.RetDef}}, err
+    }
+    return {{if .RetPtr}}&{{end}}γ.Body.M, nil
 }
 `))
 
 var soap12FuncT = template.Must(template.New("soapFunc12").Parse(
 	`func (p *{{.PortType}}) {{.Name}}({{.Input}}) ({{.Output}}) {
-	γ := struct {
-		XMLName xml.Name ` + "`xml:\"Envelope\"`" + `
-		Body    struct {
-			M {{.OutputType}} ` + "`xml:\"{{.XMLOutputType}}\"`" + `
-		}
-	}{}
-	if err = p.cli.RoundTripSoap12("{{.Action}}", α, &γ); err != nil {
-		return {{.RetDef}}, err
-	}
-	return {{if .RetPtr}}&{{end}}γ.Body.M, nil
+    γ := struct {
+        XMLName xml.Name ` + "`xml:\"Envelope\"`" + `
+        Body    struct {
+            M {{.OutputType}} ` + "`xml:\"{{.XMLOutputType}}\"`" + `
+        }
+    }{}
+    if err = p.cli.RoundTripSoap12("{{.Action}}", α, &γ); err != nil {
+        return {{.RetDef}}, err
+    }
+    return {{if .RetPtr}}&{{end}}γ.Body.M, nil
 }
 `))
 
@@ -578,7 +578,7 @@ func (ge *goEncoder) writeSOAPFunc(w io.Writer, d *wsdl.Definitions, op *wsdl.Op
 		return false
 	}
 	ge.needsStdPkg["encoding/xml"] = true
-	ge.needsExtPkg["github.com/fiorix/wsdl2go/soap"] = true
+	ge.needsExtPkg["github.com/liftitapp/wsdl2go/soap"] = true
 	in[0] = renameParam(in[0], "α")
 	out[0] = renameParam(out[0], "β")
 	typ := strings.SplitN(out[0], " ", 2)
@@ -970,14 +970,14 @@ func (ge *goEncoder) genDateTypes(w io.Writer) {
 var validatorT = template.Must(template.New("validator").Parse(`
 // Validate validates {{.TypeName}}.
 func (v {{.TypeName}}) Validate() bool {
-	for _, vv := range []{{.Type}} {
-		{{range .Args}}{{.}},{{"\n"}}{{end}}
-	}{
-		if reflect.DeepEqual(v, vv) {
-			return true
-		}
-	}
-	return false
+    for _, vv := range []{{.Type}} {
+        {{range .Args}}{{.}},{{"\n"}}{{end}}
+    }{
+        if reflect.DeepEqual(v, vv) {
+            return true
+        }
+    }
+    return false
 }
 `))
 
