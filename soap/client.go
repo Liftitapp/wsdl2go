@@ -187,16 +187,16 @@ func (c *Client) RoundTripSoap12(action string, in, out Message) error {
 
 // Envelope is a SOAP envelope.
 type Envelope struct {
-	XMLName      xml.Name `xml:"SOAP-ENV:Envelope"`
-	EnvelopeAttr string   `xml:"xmlns:SOAP-ENV,attr"`
+	XMLName      xml.Name `xml:"soapenv:Envelope"`
+	EnvelopeAttr string   `xml:"xmlns:soapenv,attr"`
 	NSAttr       string   `xml:"xmlns:ns,attr"`
 	XSIAttr      string   `xml:"xmlns:xsi,attr,omitempty"`
-	Header       Message  `xml:"SOAP-ENV:Header"`
+	Header       Message  `xml:"soapenv:Header"`
 	Body         Body
 }
 
 // Body is the body of a SOAP envelope.
 type Body struct {
-	XMLName xml.Name `xml:"SOAP-ENV:Body"`
+	XMLName xml.Name `xml:"soapenv:Body"`
 	Message Message
 }
