@@ -97,6 +97,13 @@ func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) err
 		Body:         Body{Message: in},
 	}
 
+	if reqStruct.EnvelopeAttr == "" {
+		reqStruct.EnvelopeAttr = "http://schemas.xmlsoap.org/soap/envelope/"
+	}
+	if reqStruct.NSAttr == "" {
+		reqStruct.NSAttr = c.URL
+	}
+
 	//reflect part don't touch
 	st := reflect.TypeOf(reqStruct)
 	fs := []reflect.StructField{}
@@ -109,16 +116,9 @@ func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) err
 
 	v := reflect.ValueOf(reqStruct)
 	v2 := v.Convert(st2)
-	newEnvelope := v2.Interface().(Envelope)
-	req := &newEnvelope
+	req := v2.Interface().(Envelope)
 	//
 
-	if req.EnvelopeAttr == "" {
-		req.EnvelopeAttr = "http://schemas.xmlsoap.org/soap/envelope/"
-	}
-	if req.NSAttr == "" {
-		req.NSAttr = c.URL
-	}
 	var b bytes.Buffer
 	err := xml.NewEncoder(&b).Encode(req)
 	if err != nil {
