@@ -89,7 +89,7 @@ func setXMLType(v reflect.Value) {
 
 func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) error {
 	setXMLType(reflect.ValueOf(in))
-	req := &Envelope{
+	reqStruct := Envelope{
 		EnvelopeAttr: c.Envelope,
 		NSAttr:       c.Namespace,
 		XSIAttr:      XSINamespace,
@@ -98,7 +98,7 @@ func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) err
 	}
 
 	//reflect part don't touch
-	st := reflect.TypeOf(req)
+	st := reflect.TypeOf(reqStruct)
 	fs := []reflect.StructField{}
 	for i := 0; i < st.NumField(); i++ {
 		fs = append(fs, st.Field(i))
@@ -107,9 +107,10 @@ func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) err
 	fs[2].Tag = reflect.StructTag(tag)
 	st2 := reflect.StructOf(fs)
 
-	v := reflect.ValueOf(req)
+	v := reflect.ValueOf(reqStruct)
 	v2 := v.Convert(st2)
-	req = v2.Interface().(*Envelope)
+	newEnvelope := v2.Interface().(Envelope)
+	req := &newEnvelope
 	//
 
 	if req.EnvelopeAttr == "" {
