@@ -1,264 +1,218 @@
+// Package soap provides a SOAP HTTP client.
 package soap
 
 import (
-	"errors"
+	"bytes"
+	"encoding/xml"
 	"fmt"
-	"math/rand"
+	"io"
+	"io/ioutil"
 	"net/http"
-	"sync"
-
-	"github.com/liftitapp/gomodels/core"
-	"github.com/liftitapp/routeopt/grouper"
-	"github.com/liftitapp/routeopt/routeopt"
-	"github.com/liftitapp/routeopt/vehicleopt"
+	"reflect"
 )
 
-const wastePct = 0.1
+const XSINamespace = "http://www.w3.org/2001/XMLSchema-instance"
 
-// PosibleSolutions struct
-type PosibleSolutions struct {
-	Idx       int
-	Solutions []SolutionItem
-	Err       error
+var XMLTyperType reflect.Type = reflect.TypeOf((*XMLTyper)(nil)).Elem()
+
+// A RoundTripper executes a request passing the given req as the SOAP
+// envelope body. The HTTP response is then de-serialized onto the resp
+// object. Returns error in case an error occurs serializing req, making
+// the HTTP request, or de-serializing the response.
+type RoundTripper interface {
+	RoundTrip(req, resp Message) error
+	RoundTripSoap12(action string, req, resp Message) error
 }
 
-// SolutionItem what it is
-type SolutionItem struct {
-	ServiceType core.ServiceType
-	Time        int
-	Route       core.Route
+// Message is an opaque type used by the RoundTripper to carry XML
+// documents for SOAP.
+type Message interface{}
+
+// Header is an opaque type used as the SOAP Header element in requests.
+type Header interface{}
+
+// AuthHeader is a Header to be encoded as the SOAP Header element in
+// requests, to convey credentials for authentication.
+type AuthHeader struct {
+	Namespace string `xml:"xmlns:ns,attr"`
+	Username  string `xml:"ns:username"`
+	Password  string `xml:"ns:password"`
 }
 
-// Solution gets a posible solution for all the zones
-type Solution struct {
-	// Per each area there is a set of solutions
-	Iteration int
-	Solution  map[int][]SolutionItem
+// Client is a SOAP client.
+type Client struct {
+	URL                    string              // URL of the server
+	Namespace              string              // SOAP Namespace
+	ExcludeActionNamespace bool                // Include Namespace to SOAP Action header
+	Envelope               string              // Optional SOAP Envelope
+	Header                 Header              // Optional SOAP Header
+	ContentType            string              // Optional Content-Type (default text/xml)
+	Config                 *http.Client        // Optional HTTP client
+	Pre                    func(*http.Request) // Optional hook to modify outbound requests
+	XmlName                string
 }
 
-// SolutionError error when solving the problen
-type SolutionError struct {
-	Pending map[int]core.Route
+type XMLTyper interface {
+	SetXMLType()
 }
 
-func (s SolutionError) Error() string {
-	return "All solutions were not found"
-}
-
-// ImpossibleSolutionError when it's impossible to get a solution
-type ImpossibleSolutionError struct {
-	Tasks core.Route
-}
-
-func (s ImpossibleSolutionError) Error() string {
-	return "Solutions could not be found for these routes"
-}
-
-// OptimizationParams params
-type OptimizationParams struct {
-	MaxTime    float64
-	BaseClient *http.Client
-}
-
-// ErrEmptyRoute when there are one or less tasks
-var ErrEmptyRoute = errors.New("The route must have more than 1 task")
-
-// ErrEmptyServiceTypes there must be more than 0 services
-var ErrEmptyServiceTypes = errors.New("There must be more than 0 service types")
-
-// ErrInvalidMaxTime the max time
-var ErrInvalidMaxTime = errors.New("The max time is invalid")
-
-// DoOptimizations makes the respective optimizations
-func DoOptimizations(route core.Route, sts []core.ServiceType,
-	do func(Solution), params OptimizationParams) error {
-	fmt.Println("ENTRO A OPTI")
-	if len(route) <= 2 {
-		return ErrEmptyRoute
+func setXMLType(v reflect.Value) {
+	if !v.IsValid() {
+		return
 	}
-	if len(sts) == 0 {
-		return ErrEmptyServiceTypes
-	}
-	if params.MaxTime < 0 {
-		return ErrInvalidMaxTime
-	}
-	if params.BaseClient == nil {
-		params.BaseClient = &http.Client{}
-	}
-	firstTask := route[0]
-	routes := []core.Route{route[1:]}
-	impossibleRoutes := core.Route{}
-	i := 0
-	solFound := 0
-	for {
-		if len(routes) == 0 {
+	switch v.Type().Kind() {
+	case reflect.Interface:
+		setXMLType(v.Elem())
+	case reflect.Ptr:
+		if v.IsNil() {
 			break
 		}
-		unsolvedRoutes := []core.Route{}
-		for _, route := range routes {
-			solution, err := solveRoute(firstTask, route, sts, params)
-			switch v := err.(type) {
-			case SolutionError:
-				if solution != nil {
-					solution.Iteration = i
-					solFound += len(solution.Solution)
-					do(*solution)
-
-				}
-				for _, r := range v.Pending {
-					fmt.Printf("PENDING with len %d\n", len(r))
-					if len(r) <= 1 {
-						impossibleRoutes = append(impossibleRoutes, r...)
-						continue
-					}
-					unsolvedRoutes = append(unsolvedRoutes, r)
-				}
-			case error:
-				return v
-			default:
+		ok := v.Type().Implements(XMLTyperType)
+		if ok {
+			v.MethodByName("SetXMLType").Call(nil)
+		}
+		setXMLType(v.Elem())
+	case reflect.Slice:
+		for i := 0; i < v.Len(); i++ {
+			setXMLType(v.Index(i))
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if v.Field(i).CanAddr() {
+				setXMLType(v.Field(i).Addr())
+			} else {
+				setXMLType(v.Field(i))
 			}
 		}
-		fmt.Printf("-----UNSOLVED ITER(%d) = %d\n", i, len(unsolvedRoutes))
-		routes = unsolvedRoutes
-		i++
 	}
-	fmt.Printf("All found solutions (%d)\n Impossible (%d)\n", solFound, len(impossibleRoutes))
-
-	if len(impossibleRoutes) > 0 {
-		impossibleRoutes = append(core.Route{firstTask}, impossibleRoutes...)
-		return ImpossibleSolutionError{Tasks: impossibleRoutes}
-	}
-
-	return nil
 }
 
-func solveRoute(firstTask core.Task, route core.Route, sts []core.ServiceType, params OptimizationParams) (*Solution, error) {
-	subgroups := grouper.Group(route)
-	solChan := make(chan PosibleSolutions, 0)
-	wg := sync.WaitGroup{}
-	for i, subgroup := range subgroups {
-		posGroupings, err := vehicleopt.OptimizeVehicles(
-			subgroup, sts, wastePct)
-		if err != nil {
-			fmt.Printf("Error optimizing vehicles %s", err)
-			return nil, err
-		}
-		fmt.Printf("Posible GROUPS %d\n", len(posGroupings))
-		for _, group := range posGroupings {
-			fmt.Printf("Validating grouping with %d groups\n",
-				len(group))
-			wg.Add(1)
-			go validatePosibleSolution(i, firstTask, group,
-				solChan, &wg, params)
-		}
+func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) error {
+	setXMLType(reflect.ValueOf(in))
+	req := &Envelope{
+		EnvelopeAttr: c.Envelope,
+		NSAttr:       c.Namespace,
+		XSIAttr:      XSINamespace,
+		Header:       c.Header,
+		Body:         Body{Message: in},
 	}
-	go wgWatcherSol(&wg, solChan)
-	fmt.Println("ENTRO A WAIT CHAN")
-	posibleSolutions := make(map[int][]PosibleSolutions)
-	for sol := range solChan {
-		// if sol.Err != nil {
-		// 	continue
-		// }
-		if posibleSolutions[sol.Idx] == nil {
-			posibleSolutions[sol.Idx] = make(
-				[]PosibleSolutions, 0)
-		}
-		posibleSolutions[sol.Idx] = append(
-			posibleSolutions[sol.Idx], sol)
+
+	//reflect part don't touch
+	st := reflect.TypeOf(req)
+	fs := []reflect.StructField{}
+	for i := 0; i < st.NumField(); i++ {
+		fs = append(fs, st.Field(i))
 	}
-	fmt.Printf("nRoutes = %d\n", len(subgroups))
-	//choose solution
-	return consolidateSolution(subgroups, posibleSolutions)
-	// if solution.Err != nil {
-	// 	// fmt.Printf("Solution error %v", solution)
-	// 	for i, s := range solgution.Pending {
-	// 		fmt.Printf("Pending for subroute %d\n", i)
-	// 		for _, t := range s {
-	// 			fmt.Printf("- %s (%f, %f)", t.Address,
-	// 				t.Lat, t.Lon)
-	// 		}
-	// 		fmt.Println("")
-	// 	}
-	// 	return solution.Err
-	// }
+	tag := fmt.Sprintf(`xml:"xmlns:%s,attr"`, c.XmlName)
+	fs[2].Tag = reflect.StructTag(tag)
+	st2 := reflect.StructOf(fs)
+
+	v := reflect.ValueOf(req)
+	v2 := v.Convert(st2)
+	req = v2.Interface().(*Envelope)
+	//
+
+	if req.EnvelopeAttr == "" {
+		req.EnvelopeAttr = "http://schemas.xmlsoap.org/soap/envelope/"
+	}
+	if req.NSAttr == "" {
+		req.NSAttr = c.URL
+	}
+	var b bytes.Buffer
+	err := xml.NewEncoder(&b).Encode(req)
+	if err != nil {
+		return err
+	}
+	cli := c.Config
+	if cli == nil {
+		cli = http.DefaultClient
+	}
+	r, err := http.NewRequest("POST", c.URL, &b)
+	if err != nil {
+		return err
+	}
+	setHeaders(r)
+	if c.Pre != nil {
+		c.Pre(r)
+	}
+	resp, err := cli.Do(r)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		// read only the first Mb of the body in error case
+		limReader := io.LimitReader(resp.Body, 1024*1024)
+		body, _ := ioutil.ReadAll(limReader)
+		return fmt.Errorf("%q: %q", resp.Status, body)
+	}
+	return xml.NewDecoder(resp.Body).Decode(out)
 }
 
-/* consolidateSolution chooses a posible solution for each zone with
-a random criteria
-*/
-func consolidateSolution(routes []core.Route, posi map[int][]PosibleSolutions) (*Solution, error) {
-	sol := map[int][]SolutionItem{}
-	for k, v := range posi {
-		idx := rand.Intn(len(v))
-		sol[k] = v[idx].Solutions
-	}
-	fmt.Printf("len routes %d len sol %d\n", len(routes), len(sol))
-	if len(routes) == len(sol) {
-		return &Solution{Solution: sol}, nil
-	}
-
-	unsol := map[int]core.Route{}
-	for i := range routes {
-		if _, ok := sol[i]; !ok {
-			unsol[i] = routes[i]
+// RoundTrip implements the RoundTripper interface.
+func (c *Client) RoundTrip(in, out Message) error {
+	headerFunc := func(r *http.Request) {
+		var actionName, soapAction string
+		if in != nil {
+			soapAction = reflect.TypeOf(in).Elem().Name()
+		}
+		ct := c.ContentType
+		if ct == "" {
+			ct = "text/xml"
+		}
+		r.Header.Set("Content-Type", ct)
+		if in != nil {
+			if c.ExcludeActionNamespace {
+				actionName = soapAction
+			} else {
+				actionName = fmt.Sprintf("%s/%s", c.Namespace, soapAction)
+			}
+			r.Header.Add("SOAPAction", actionName)
 		}
 	}
-	fmt.Printf("UNSOL (%d)\n", len(unsol))
-	return &Solution{Solution: sol}, SolutionError{Pending: unsol}
+	return doRoundTrip(c, headerFunc, in, out)
 }
 
-/* validatePosibleSolution validates that a set of tasks of a given subregion
-of a possible subgroup can get a solution optimized that fit the time
-window
-*/
-func validatePosibleSolution(idx int, firstTask core.Task, group []vehicleopt.PosibleGrouping, solChan chan PosibleSolutions, solWg *sync.WaitGroup, params OptimizationParams) {
-	doneChan := make(chan routeopt.PosibleOptimization, 0)
-	wg := sync.WaitGroup{}
-	for _, posGroup := range group {
-		wg.Add(1)
-		opt := routeopt.NewOptimizer(
-			params.BaseClient,
-			append([]core.Task{firstTask}, posGroup.Grouping...),
-			posGroup.ServiceType,
-			params.MaxTime,
-			doneChan,
-			&wg)
-		go opt.OptmizeRoutePar()
-	}
-	go wgWatcherDone(&wg, doneChan)
-	fmt.Println("ENTRO A WAIT CHAN")
-	optimizedSolution := make([]SolutionItem, 0)
-	for posOptimization := range doneChan {
-		if posOptimization.Err != nil {
-			// discards all this group
-			// solChan <- PosibleSolutions{
-			// 	Idx: idx,
-			// 	Err: posOptimization.Err,
-			// }
-			solWg.Done()
-			return
+// RoundTrip implements the RoundTripper interface.
+func (c *Client) RoundTripWithAction(soapAction string, in, out Message) error {
+	headerFunc := func(r *http.Request) {
+		var actionName string
+		ct := c.ContentType
+		if ct == "" {
+			ct = "text/xml"
 		}
-		optimizedSolution = append(optimizedSolution, SolutionItem{
-			Route:       posOptimization.Route,
-			ServiceType: posOptimization.ServiceType,
-			Time:        posOptimization.Time,
-		})
+		r.Header.Set("Content-Type", ct)
+		if in != nil {
+			if c.ExcludeActionNamespace {
+				actionName = soapAction
+			} else {
+				actionName = fmt.Sprintf("%s/%s", c.Namespace, soapAction)
+			}
+			r.Header.Add("SOAPAction", actionName)
+		}
 	}
-	solChan <- PosibleSolutions{
-		Idx:       idx,
-		Solutions: optimizedSolution,
-	}
-	solWg.Done()
+	return doRoundTrip(c, headerFunc, in, out)
 }
 
-func wgWatcherDone(wg *sync.WaitGroup,
-	doneChan chan routeopt.PosibleOptimization) {
-	wg.Wait()
-	close(doneChan)
+func (c *Client) RoundTripSoap12(action string, in, out Message) error {
+	headerFunc := func(r *http.Request) {
+		r.Header.Add("Content-Type", fmt.Sprintf("application/soap+xml; charset=utf-8; action=\"%s\"", action))
+	}
+	return doRoundTrip(c, headerFunc, in, out)
 }
 
-func wgWatcherSol(wg *sync.WaitGroup,
-	solChan chan PosibleSolutions) {
-	wg.Wait()
-	close(solChan)
+// Envelope is a SOAP envelope.
+type Envelope struct {
+	XMLName      xml.Name `xml:"soapenv:Envelope"`
+	EnvelopeAttr string   `xml:"xmlns:soapenv,attr"`
+	NSAttr       string   `xml:"xmlns:con,attr"`
+	XSIAttr      string   `xml:"xmlns:xsi,attr,omitempty"`
+	Header       Message  `xml:"soapenv:Header"`
+	Body         Body
+}
+
+// Body is the body of a SOAP envelope.
+type Body struct {
+	XMLName xml.Name `xml:"soapenv:Body"`
+	Message Message
 }
