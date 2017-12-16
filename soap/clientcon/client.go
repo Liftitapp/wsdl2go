@@ -190,7 +190,7 @@ func (c *Client) RoundTripSoap12(action string, in, out Message) error {
 type Envelope struct {
 	XMLName      xml.Name `xml:"soapenv:Envelope"`
 	EnvelopeAttr string   `xml:"xmlns:soapenv,attr"`
-	NSAttr       string   `xml:"xmlns:est,attr"`
+	NSAttr       string   `xml:"xmlns:con,attr"`
 	XSIAttr      string   `xml:"xmlns:xsi,attr,omitempty"`
 	Header       Message  `xml:"soapenv:Header"`
 	Body         Body
