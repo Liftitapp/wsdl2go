@@ -116,7 +116,7 @@ func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) err
 
 	v := reflect.ValueOf(reqStruct)
 	v2 := v.Convert(st2)
-	req := v2.Interface().(Envelope)
+	req := v2.Interface()
 	//
 
 	var b bytes.Buffer
