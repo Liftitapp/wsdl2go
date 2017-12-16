@@ -1,5 +1,5 @@
 // Package soap provides a SOAP HTTP client.
-package clientenv
+package clientest
 
 import (
 	"bytes"
