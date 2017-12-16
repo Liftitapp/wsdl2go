@@ -49,7 +49,6 @@ type Client struct {
 	ContentType            string              // Optional Content-Type (default text/xml)
 	Config                 *http.Client        // Optional HTTP client
 	Pre                    func(*http.Request) // Optional hook to modify outbound requests
-	XmlName                string
 }
 
 type XMLTyper interface {
@@ -89,7 +88,7 @@ func setXMLType(v reflect.Value) {
 
 func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) error {
 	setXMLType(reflect.ValueOf(in))
-	reqStruct := Envelope{
+	req := &Envelope{
 		EnvelopeAttr: c.Envelope,
 		NSAttr:       c.Namespace,
 		XSIAttr:      XSINamespace,
@@ -97,27 +96,12 @@ func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) err
 		Body:         Body{Message: in},
 	}
 
-	if reqStruct.EnvelopeAttr == "" {
-		reqStruct.EnvelopeAttr = "http://schemas.xmlsoap.org/soap/envelope/"
+	if req.EnvelopeAttr == "" {
+		req.EnvelopeAttr = "http://schemas.xmlsoap.org/soap/envelope/"
 	}
-	if reqStruct.NSAttr == "" {
-		reqStruct.NSAttr = c.URL
+	if req.NSAttr == "" {
+		req.NSAttr = c.URL
 	}
-
-	//reflect part don't touch
-	st := reflect.TypeOf(reqStruct)
-	fs := []reflect.StructField{}
-	for i := 0; i < st.NumField(); i++ {
-		fs = append(fs, st.Field(i))
-	}
-	tag := fmt.Sprintf(`xml:"xmlns:%s,attr"`, c.XmlName)
-	fs[2].Tag = reflect.StructTag(tag)
-	st2 := reflect.StructOf(fs)
-
-	v := reflect.ValueOf(reqStruct)
-	v2 := v.Convert(st2)
-	req := v2.Interface()
-	//
 
 	var b bytes.Buffer
 	err := xml.NewEncoder(&b).Encode(req)
@@ -206,7 +190,7 @@ func (c *Client) RoundTripSoap12(action string, in, out Message) error {
 type Envelope struct {
 	XMLName      xml.Name `xml:"soapenv:Envelope"`
 	EnvelopeAttr string   `xml:"xmlns:soapenv,attr"`
-	NSAttr       string   `xml:"xmlns:con,attr"`
+	NSAttr       string   `xml:"xmlns:est,attr"`
 	XSIAttr      string   `xml:"xmlns:xsi,attr,omitempty"`
 	Header       Message  `xml:"soapenv:Header"`
 	Body         Body
