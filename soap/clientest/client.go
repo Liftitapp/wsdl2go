@@ -124,10 +124,6 @@ func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) err
 	if err != nil {
 		return err
 	}
-	fmt.Println("============================ en client.go")
-	fmt.Printf("%#v\n", resp)
-	fmt.Println("============================ en client.go")
-
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		// read only the first Mb of the body in error case
