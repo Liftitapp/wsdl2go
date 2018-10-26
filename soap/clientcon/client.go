@@ -87,7 +87,7 @@ func setXMLType(v reflect.Value) {
 }
 
 func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) error {
-	fmt.Println("****************** entra a doRoundTrip")
+	fmt.Println("AAAAAAAAAAAAAAAAAAAA entra a doRoundTrip")
 	setXMLType(reflect.ValueOf(in))
 	req := &Envelope{
 		EnvelopeAttr: c.Envelope,
@@ -125,9 +125,9 @@ func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) err
 	if err != nil {
 		return err
 	}
-	fmt.Println("****************************** en client.go")
-	fmt.Printf("%#v\n", resp)
-	fmt.Println("****************************** en client.go")
+	fmt.Println("AAAAAAAAAAAAAAAAAAAA en client.go")
+	fmt.Printf("%#v ", resp)
+	fmt.Println("AAAAAAAAAAAAAAAAAAAA en client.go")
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
