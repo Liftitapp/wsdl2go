@@ -126,7 +126,7 @@ func doRoundTrip(c *Client, setHeaders func(*http.Request), in, out Message) err
 		return err
 	}
 	fmt.Println("AAAAAAAAAAAAAAAAAAAA en clientgo")
-	fmt.Printf("%#v ", resp)
+	fmt.Printf("%#v\n ", resp)
 	fmt.Println("AAAAAAAAAAAAAAAAAAAA en clientgo")
 
 	defer resp.Body.Close()
